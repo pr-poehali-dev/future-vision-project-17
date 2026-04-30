@@ -1,7 +1,9 @@
 import { useScroll, useTransform, motion } from "framer-motion";
 import { useRef } from "react";
+import { useNavigate } from "react-router-dom";
 
 export default function Hero() {
+  const navigate = useNavigate();
   const container = useRef<HTMLDivElement>(null);
   const { scrollYProgress } = useScroll({
     target: container,
@@ -34,7 +36,10 @@ export default function Hero() {
         <p className="text-lg md:text-xl max-w-2xl mx-auto px-6 opacity-90 mb-8">
           Ощути адреналин настоящих уличных гонок. Тюнингуй авто, бросай вызов соперникам и властвуй над городом.
         </p>
-        <button className="bg-orange-500 hover:bg-orange-400 text-white px-8 py-3 uppercase tracking-widest text-sm font-bold transition-all duration-300 cursor-pointer">
+        <button
+          onClick={() => navigate("/download")}
+          className="bg-orange-500 hover:bg-orange-400 text-white px-8 py-3 uppercase tracking-widest text-sm font-bold transition-all duration-300 cursor-pointer"
+        >
           Играть бесплатно
         </button>
       </div>
