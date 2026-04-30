@@ -36,12 +36,20 @@ export default function Hero() {
         <p className="text-lg md:text-xl max-w-2xl mx-auto px-6 opacity-90 mb-8">
           Ощути адреналин настоящих уличных гонок. Тюнингуй авто, бросай вызов соперникам и властвуй над городом.
         </p>
-        <button
-          onClick={() => navigate("/download")}
-          className="bg-orange-500 hover:bg-orange-400 text-white px-8 py-3 uppercase tracking-widest text-sm font-bold transition-all duration-300 cursor-pointer"
-        >
-          Играть бесплатно
-        </button>
+        <div className="flex flex-col sm:flex-row gap-4 justify-center">
+          <button
+            onClick={() => navigate("/play")}
+            className="bg-orange-500 hover:bg-orange-400 text-white px-8 py-3 uppercase tracking-widest text-sm font-bold transition-all duration-300 cursor-pointer"
+          >
+            Играть сейчас
+          </button>
+          <button
+            onClick={() => navigate("/download")}
+            className="bg-transparent border border-white hover:border-orange-400 hover:text-orange-400 text-white px-8 py-3 uppercase tracking-widest text-sm font-bold transition-all duration-300 cursor-pointer"
+          >
+            Скачать
+          </button>
+        </div>
       </div>
     </div>
   );
