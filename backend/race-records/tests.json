@@ -1,0 +1,19 @@
+{
+  "tests": [
+    {
+      "name": "GET records",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 200,
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "POST record",
+      "method": "POST",
+      "path": "/",
+      "body": {"player_name": "Тестер", "finish_time_ms": 45000, "laps": 3},
+      "expectedStatus": 200,
+      "bodyMatcher": "partial"
+    }
+  ]
+}

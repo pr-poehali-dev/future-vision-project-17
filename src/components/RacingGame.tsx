@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 
 const TRACK_POINTS = [
   { x: 400, y: 100 },
@@ -71,7 +71,47 @@ export default function RacingGame() {
     countdownTimer: 0,
   });
   const animRef = useRef<number>(0);
+  const raceStartTimeRef = useRef<number>(0);
+  const raceFinishTimeRef = useRef<number>(0);
   const [display, setDisplay] = useState({ speed: 0, pos: 1, lap: 1, totalLaps: 3, countdown: 3, started: false, finished: false, winner: "" });
+  const [elapsed, setElapsed] = useState(0);
+  const [records, setRecords] = useState<{ player_name: string; finish_time_ms: number }[]>([]);
+  const [showRecords, setShowRecords] = useState(false);
+  const [playerName, setPlayerName] = useState("");
+  const [nameSaved, setNameSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const API_URL = "https://functions.poehali.dev/c378aa92-51ac-49b3-ba9d-2ba1318f3739";
+
+  const fetchRecords = useCallback(async () => {
+    try {
+      const res = await fetch(API_URL);
+      const data = await res.json();
+      setRecords(data.records || []);
+    } catch (e) { console.error(e); }
+  }, []);
+
+  const saveRecord = useCallback(async (name: string, timeMs: number) => {
+    setSaving(true);
+    try {
+      await fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ player_name: name, finish_time_ms: timeMs, laps: 3 }),
+      });
+      await fetchRecords();
+      setNameSaved(true);
+    } catch (e) { console.error(e); } finally {
+      setSaving(false);
+    }
+  }, [fetchRecords]);
+
+  function formatTime(ms: number) {
+    const m = Math.floor(ms / 60000);
+    const s = Math.floor((ms % 60000) / 1000);
+    const cs = Math.floor((ms % 1000) / 10);
+    return `${m}:${String(s).padStart(2, "0")}.${String(cs).padStart(2, "0")}`;
+  }
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent, down: boolean) => {
@@ -91,14 +131,23 @@ export default function RacingGame() {
         setDisplay(d => ({ ...d, countdown: s.countdown }));
       } else {
         s.started = true;
+        raceStartTimeRef.current = performance.now();
         clearInterval(cdInterval);
       }
     }, 1000);
+
+    // Elapsed timer
+    const elapsedInterval = setInterval(() => {
+      if (stateRef.current.started && !stateRef.current.finished) {
+        setElapsed(Math.floor(performance.now() - raceStartTimeRef.current));
+      }
+    }, 100);
 
     return () => {
       window.removeEventListener("keydown", (e) => onKey(e, true));
       window.removeEventListener("keyup", (e) => onKey(e, false));
       clearInterval(cdInterval);
+      clearInterval(elapsedInterval);
     };
   }, []);
 
@@ -255,7 +304,10 @@ export default function RacingGame() {
           s.player.lap += 1;
           if (s.player.lap >= s.totalLaps) {
             s.finished = true;
+            const finishMs = Math.floor(performance.now() - raceStartTimeRef.current);
+            raceFinishTimeRef.current = finishMs;
             setDisplay(d => ({ ...d, finished: true, winner: "Ты победил! 🏆" }));
+            fetchRecords();
           }
         }
 
@@ -317,9 +369,27 @@ export default function RacingGame() {
       lap: 0,
     }));
     s.finished = false;
-    s.started = true;
-    s.countdown = 0;
-    setDisplay({ speed: 0, pos: 1, lap: 1, totalLaps: 3, countdown: 0, started: true, finished: false, winner: "" });
+    s.started = false;
+    s.countdown = 3;
+    raceStartTimeRef.current = 0;
+    raceFinishTimeRef.current = 0;
+    setElapsed(0);
+    setNameSaved(false);
+    setPlayerName("");
+    setShowRecords(false);
+    setDisplay({ speed: 0, pos: 1, lap: 1, totalLaps: 3, countdown: 3, started: false, finished: false, winner: "" });
+    // restart countdown
+    let cd = 3;
+    const cdInterval = setInterval(() => {
+      cd -= 1;
+      stateRef.current.countdown = cd;
+      setDisplay(d => ({ ...d, countdown: cd }));
+      if (cd <= 0) {
+        stateRef.current.started = true;
+        raceStartTimeRef.current = performance.now();
+        clearInterval(cdInterval);
+      }
+    }, 1000);
   };
 
   return (
@@ -339,6 +409,13 @@ export default function RacingGame() {
         </div>
       </div>
 
+      {/* Timer */}
+      {display.started && !display.finished && (
+        <div className="absolute top-4 right-4 bg-black/70 text-white px-4 py-2 font-black text-xl tracking-widest tabular-nums">
+          {formatTime(elapsed)}
+        </div>
+      )}
+
       {/* Countdown */}
       {display.countdown > 0 && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -357,12 +434,63 @@ export default function RacingGame() {
 
       {/* Finish overlay */}
       {display.finished && (
-        <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center gap-6">
-          <div className="text-6xl">🏁</div>
-          <div className="text-white font-black text-3xl md:text-5xl uppercase text-center">{display.winner}</div>
+        <div className="absolute inset-0 bg-black/90 flex flex-col items-center justify-center gap-4 px-4 overflow-y-auto py-8">
+          <div className="text-5xl">🏁</div>
+          <div className="text-white font-black text-2xl md:text-4xl uppercase text-center">{display.winner}</div>
+
+          {raceFinishTimeRef.current > 0 && (
+            <div className="text-orange-400 font-black text-3xl tracking-widest">
+              {formatTime(raceFinishTimeRef.current)}
+            </div>
+          )}
+
+          {/* Save record form — only if player won */}
+          {raceFinishTimeRef.current > 0 && !nameSaved && (
+            <div className="flex flex-col items-center gap-3 mt-2">
+              <p className="text-neutral-400 text-sm uppercase tracking-wide">Сохранить результат в таблицу рекордов</p>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  maxLength={16}
+                  placeholder="Твоё имя"
+                  value={playerName}
+                  onChange={e => setPlayerName(e.target.value)}
+                  className="bg-neutral-800 text-white px-4 py-2 text-sm font-bold uppercase tracking-wide outline-none border border-neutral-600 focus:border-orange-500 w-40"
+                />
+                <button
+                  onClick={() => playerName.trim() && saveRecord(playerName.trim(), raceFinishTimeRef.current)}
+                  disabled={saving || !playerName.trim()}
+                  className="bg-orange-500 hover:bg-orange-400 disabled:opacity-50 text-white px-4 py-2 font-black uppercase tracking-wide text-sm transition-all"
+                >
+                  {saving ? "..." : "Сохранить"}
+                </button>
+              </div>
+            </div>
+          )}
+          {nameSaved && <p className="text-green-400 font-bold text-sm uppercase tracking-wide">Результат сохранён!</p>}
+
+          {/* Leaderboard */}
+          <div className="w-full max-w-sm mt-2">
+            <div className="flex justify-between items-center mb-2">
+              <p className="text-neutral-400 text-xs uppercase tracking-widest">Таблица рекордов</p>
+              <button onClick={fetchRecords} className="text-neutral-600 hover:text-orange-400 text-xs uppercase tracking-wide transition-colors">Обновить</button>
+            </div>
+            <div className="border border-neutral-800">
+              {records.length === 0 ? (
+                <p className="text-neutral-600 text-xs text-center py-4 uppercase">Пока нет рекордов</p>
+              ) : records.map((r, i) => (
+                <div key={i} className={`flex justify-between items-center px-4 py-2 border-b border-neutral-800 last:border-0 ${i === 0 ? "bg-orange-500/10" : ""}`}>
+                  <span className="text-neutral-500 text-xs w-6">{i + 1}</span>
+                  <span className="text-white font-bold text-sm flex-1 uppercase">{r.player_name}</span>
+                  <span className={`font-black text-sm tabular-nums ${i === 0 ? "text-orange-400" : "text-neutral-300"}`}>{formatTime(r.finish_time_ms)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
           <button
             onClick={restart}
-            className="bg-orange-500 hover:bg-orange-400 text-white px-10 py-4 font-black uppercase tracking-widest text-lg transition-all"
+            className="bg-orange-500 hover:bg-orange-400 text-white px-10 py-3 font-black uppercase tracking-widest text-base transition-all mt-2"
           >
             Снова!
           </button>
@@ -403,6 +531,36 @@ export default function RacingGame() {
       <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-neutral-500 text-xs uppercase tracking-widest hidden md:block">
         ← → разгон · ↑ газ · ↓ тормоз
       </div>
+
+      {/* Records button */}
+      <button
+        onClick={() => { fetchRecords(); setShowRecords(v => !v); }}
+        className="absolute top-4 right-4 bg-black/70 hover:bg-black/90 text-neutral-400 hover:text-orange-400 px-3 py-2 text-xs uppercase tracking-widest transition-colors"
+        style={{ display: display.started && !display.finished ? "none" : undefined }}
+      >
+        🏆 Рекорды
+      </button>
+
+      {/* Records panel */}
+      {showRecords && !display.finished && (
+        <div className="absolute top-0 right-0 h-full w-72 bg-black/95 border-l border-neutral-800 flex flex-col p-4 z-20">
+          <div className="flex justify-between items-center mb-4">
+            <span className="text-white font-black uppercase tracking-wide text-sm">Таблица рекордов</span>
+            <button onClick={() => setShowRecords(false)} className="text-neutral-500 hover:text-white text-lg">✕</button>
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            {records.length === 0 ? (
+              <p className="text-neutral-600 text-xs text-center py-8 uppercase">Пока нет рекордов</p>
+            ) : records.map((r, i) => (
+              <div key={i} className={`flex justify-between items-center px-2 py-3 border-b border-neutral-800 ${i === 0 ? "bg-orange-500/10" : ""}`}>
+                <span className="text-neutral-500 text-xs w-5">{i + 1}</span>
+                <span className="text-white font-bold text-sm flex-1 uppercase">{r.player_name}</span>
+                <span className={`font-black text-sm tabular-nums ${i === 0 ? "text-orange-400" : "text-neutral-300"}`}>{formatTime(r.finish_time_ms)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
